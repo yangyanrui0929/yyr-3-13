@@ -5,7 +5,13 @@ import {
   DIR_OFFSETS,
   BUILDING_STATS,
   DAY_THRESHOLD,
+  WindField,
 } from './constants';
+import {
+  computeWindmillModifier,
+  getWindmillModifiedGen,
+  WindmillModifierResult,
+} from './windSystem';
 
 export function isWireConnected(wire: GridCell, direction: number): boolean {
   if (wire.type !== 'wire') return false;
@@ -18,16 +24,21 @@ export function getOppositeDirection(dir: number): number {
   return (dir + 2) % 4;
 }
 
-export function calculatePowerNetwork(
-  grid: GridCell[][],
-  dayTime: number,
-  storedPower: number
-): {
+export interface PowerNetworkResult {
   poweredCells: Set<string>;
   totalGeneration: number;
   totalConsumption: number;
   batteryCapacity: number;
-} {
+  windmillModifiers: Map<string, WindmillModifierResult>;
+  windmillActualGens: Map<string, number>;
+}
+
+export function calculatePowerNetwork(
+  grid: GridCell[][],
+  dayTime: number,
+  storedPower: number,
+  windField?: WindField
+): PowerNetworkResult {
   const isDay = dayTime < DAY_THRESHOLD;
   let totalGeneration = 0;
   let totalConsumption = 0;
@@ -35,6 +46,8 @@ export function calculatePowerNetwork(
 
   const windmillSources: Array<{ x: number; y: number; gen: number }> = [];
   const batterySources: Array<{ x: number; y: number; discharge: number }> = [];
+  const windmillModifiers = new Map<string, WindmillModifierResult>();
+  const windmillActualGens = new Map<string, number>();
 
   for (let y = 0; y < GRID_SIZE; y++) {
     for (let x = 0; x < GRID_SIZE; x++) {
@@ -42,11 +55,28 @@ export function calculatePowerNetwork(
       if (cell.faulty) continue;
 
       if (cell.type === 'windmill') {
-        const gen = isDay
+        const baseGen = isDay
           ? BUILDING_STATS.windmill.dayGen
           : BUILDING_STATS.windmill.nightGen;
-        totalGeneration += gen;
-        windmillSources.push({ x, y, gen });
+
+        let actualGen: number = baseGen;
+        if (windField) {
+          const modifier = computeWindmillModifier(windField, x, y);
+          windmillModifiers.set(`${x},${y}`, modifier);
+          actualGen = getWindmillModifiedGen(baseGen, modifier);
+        } else {
+          windmillModifiers.set(`${x},${y}`, {
+            multiplier: 1,
+            isTailwind: false,
+            isHeadwind: false,
+            shadowLevel: 0,
+            sailBoosted: false,
+          });
+        }
+
+        windmillActualGens.set(`${x},${y}`, actualGen);
+        totalGeneration += actualGen;
+        windmillSources.push({ x, y, gen: actualGen });
       }
       if (cell.type === 'battery') {
         batteryCapacity += BUILDING_STATS.battery.storage;
@@ -118,7 +148,8 @@ export function calculatePowerNetwork(
         currentCell.type === 'windmill' ||
         currentCell.type === 'house' ||
         currentCell.type === 'factory' ||
-        currentCell.type === 'battery'
+        currentCell.type === 'battery' ||
+        currentCell.type === 'sail'
       ) {
         canConnectFromCurrent = true;
       }
@@ -130,7 +161,8 @@ export function calculatePowerNetwork(
         neighbor.type === 'windmill' ||
         neighbor.type === 'house' ||
         neighbor.type === 'factory' ||
-        neighbor.type === 'battery'
+        neighbor.type === 'battery' ||
+        neighbor.type === 'sail'
       ) {
         canConnectFromNeighbor = true;
       }
@@ -194,7 +226,14 @@ export function calculatePowerNetwork(
     }
   }
 
-  return { poweredCells, totalGeneration, totalConsumption, batteryCapacity };
+  return {
+    poweredCells,
+    totalGeneration,
+    totalConsumption,
+    batteryCapacity,
+    windmillModifiers,
+    windmillActualGens,
+  };
 }
 
 export function countPoweredBuildings(

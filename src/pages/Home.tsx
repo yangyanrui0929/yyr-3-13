@@ -2,6 +2,7 @@ import { FloatingIsland } from '@/components/FloatingIsland';
 import { Toolbar } from '@/components/Toolbar';
 import { StatusBar } from '@/components/StatusBar';
 import { SettlementModal } from '@/components/SettlementModal';
+import { WindInfoPanel, WindLegend } from '@/components/WindOverlay';
 import { useGameLoop } from '@/hooks/useGameLoop';
 import { useGameStore } from '@/store/useGameStore';
 
@@ -36,14 +37,14 @@ export default function Home() {
             🏝️ 浮岛电网建造
           </h1>
           <p className={`text-sm ${isNight ? 'text-slate-300' : 'text-gray-600'}`}>
-            放置风车和建筑，铺设电线，为你的浮岛带来光明！
+            放置风车和建筑，铺设电线，利用风向为你的浮岛带来光明！
           </p>
         </header>
 
         <StatusBar />
 
         <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
-          <div className="order-2 lg:order-1 lg:w-56">
+          <div className="order-2 lg:order-1 lg:w-56 space-y-3">
             <Toolbar />
           </div>
 
@@ -51,14 +52,16 @@ export default function Home() {
             <FloatingIsland />
           </div>
 
-          <div className="order-3 lg:w-56 hidden lg:block">
+          <div className="order-3 lg:w-56 space-y-3">
+            <WindInfoPanel isNight={isNight} />
+            <WindLegend isNight={isNight} />
             <GameGuide isNight={isNight} />
           </div>
         </div>
 
         <footer className="text-center pb-4">
           <p className={`text-xs ${isNight ? 'text-slate-400' : 'text-gray-500'}`}>
-            用你的智慧构建一个完美的电力网络 ⚡
+            用你的智慧构建一个完美的电力网络 ⚡ 善用风向和导风帆让风车更强大！
           </p>
         </footer>
       </div>
@@ -132,7 +135,11 @@ function GameGuide({ isNight }: { isNight: boolean }) {
       <ul className="text-xs space-y-2">
         <li>
           <span className="inline-block w-4 mr-1">🌀</span>
-          <b>风车</b>白天发5电，夜晚发1电
+          <b>风车</b>顺风+35%，逆风-30%
+        </li>
+        <li>
+          <span className="inline-block w-4 mr-1">⛵</span>
+          <b>导风帆</b>改风向，加强风力
         </li>
         <li>
           <span className="inline-block w-4 mr-1">🏠</span>
@@ -141,6 +148,10 @@ function GameGuide({ isNight }: { isNight: boolean }) {
         <li>
           <span className="inline-block w-4 mr-1">🏭</span>
           <b>工坊</b>消耗4电，生产物资
+        </li>
+        <li>
+          <span className="inline-block w-4 mr-1">🏠🏭</span>
+          <b>遮挡</b>形成风影，降低后方风力
         </li>
         <li>
           <span className="inline-block w-4 mr-1">🔋</span>
@@ -153,7 +164,7 @@ function GameGuide({ isNight }: { isNight: boolean }) {
       </ul>
       <div className="mt-4 pt-3 border-t border-gray-300/30">
         <p className={`text-xs ${isNight ? 'text-slate-400' : 'text-gray-500'}`}>
-          💡 保持80%以上建筑供电可获得最高满意度！
+          💡 风车放在导风帆前方+顺风方向可获得最高发电！
         </p>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useGameStore } from '../store/useGameStore';
 import { GridCellComponent } from './GridCell';
+import { WindOverlay } from './WindOverlay';
 import { GRID_SIZE } from '../utils/constants';
 
 export const FloatingIsland: React.FC = () => {
@@ -18,7 +19,7 @@ export const FloatingIsland: React.FC = () => {
   const handleCellRightClick = (e: React.MouseEvent, x: number, y: number) => {
     e.preventDefault();
     const cell = grid[y][x];
-    if (cell.type === 'wire' && !cell.faulty) {
+    if ((cell.type === 'wire' || cell.type === 'sail') && !cell.faulty) {
       rotateCell(x, y);
     }
   };
@@ -31,7 +32,7 @@ export const FloatingIsland: React.FC = () => {
           const x = parseInt(hovered.dataset.x || '0');
           const y = parseInt(hovered.dataset.y || '0');
           const cell = grid[y][x];
-          if (cell.type === 'wire' && !cell.faulty) {
+          if ((cell.type === 'wire' || cell.type === 'sail') && !cell.faulty) {
             rotateCell(x, y);
           }
         }
@@ -42,6 +43,7 @@ export const FloatingIsland: React.FC = () => {
   }, [grid, rotateCell]);
 
   const isNight = dayTime >= 50;
+  const cellSize = 56;
 
   return (
     <div className="relative">
@@ -79,28 +81,31 @@ export const FloatingIsland: React.FC = () => {
           }}
         />
 
-        <div
-          className="grid gap-0.5 p-2 rounded-2xl"
-          style={{
-            gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
-            background: isNight
-              ? 'linear-gradient(135deg, #1a3a0f 0%, #0f2a08 100%)'
-              : 'linear-gradient(135deg, #8BC34A 0%, #689F38 100%)',
-            boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.2)',
-          }}
-        >
-          {grid.map((row, y) =>
-            row.map((cell, x) => (
-              <div key={`${x}-${y}`} className="grid-cell" data-x={x} data-y={y}>
-                <GridCellComponent
-                  cell={cell}
-                  selectedTool={selectedTool}
-                  onClick={() => handleCellClick(x, y)}
-                  onRightClick={(e) => handleCellRightClick(e, x, y)}
-                />
-              </div>
-            ))
-          )}
+        <div className="relative">
+          <div
+            className="grid gap-0.5 p-2 rounded-2xl"
+            style={{
+              gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
+              background: isNight
+                ? 'linear-gradient(135deg, #1a3a0f 0%, #0f2a08 100%)'
+                : 'linear-gradient(135deg, #8BC34A 0%, #689F38 100%)',
+              boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.2)',
+            }}
+          >
+            {grid.map((row, y) =>
+              row.map((cell, x) => (
+                <div key={`${x}-${y}`} className="grid-cell" data-x={x} data-y={y}>
+                  <GridCellComponent
+                    cell={cell}
+                    selectedTool={selectedTool}
+                    onClick={() => handleCellClick(x, y)}
+                    onRightClick={(e) => handleCellRightClick(e, x, y)}
+                  />
+                </div>
+              ))
+            )}
+          </div>
+          <WindOverlay cellSize={cellSize} />
         </div>
       </div>
 

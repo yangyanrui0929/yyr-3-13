@@ -7,8 +7,17 @@ import {
   FAULT_CHANCE,
   BUILDING_STATS,
   DAY_THRESHOLD,
+  WindField,
+  WIND_CHANGE_CHANCE,
+  WIND_DIRECTIONS,
 } from '../utils/constants';
 import { calculatePowerNetwork, countPoweredBuildings } from '../utils/powerCalculator';
+import {
+  createEmptyWindField,
+  randomizeWindDirection,
+  computeWindField,
+} from '../utils/windSystem';
+import { WindmillModifierResult } from '../utils/windSystem';
 
 const STORAGE_KEY = 'floating-island-grid-game-save';
 
@@ -17,6 +26,8 @@ interface PersistedState {
   dayTime: number;
   storedPower: number;
   satisfaction: number;
+  windDirIndex: number;
+  windStrength: number;
 }
 
 interface GameState {
@@ -30,6 +41,9 @@ interface GameState {
   totalGeneration: number;
   totalConsumption: number;
   showSettlement: boolean;
+  windField: WindField;
+  windmillModifiers: Map<string, WindmillModifierResult>;
+  windmillActualGens: Map<string, number>;
   setSelectedTool: (tool: ToolType) => void;
   placeOrRemove: (x: number, y: number) => void;
   rotateCell: (x: number, y: number) => void;
@@ -66,6 +80,8 @@ function saveToLocalStorage(state: PersistedState): void {
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      windDirIndex: state.windDirIndex,
+      windStrength: state.windStrength,
     });
     localStorage.setItem(STORAGE_KEY, data);
   } catch {
@@ -84,6 +100,8 @@ function loadFromLocalStorage(): PersistedState | null {
         dayTime: data.dayTime ?? 20,
         storedPower: data.storedPower ?? 10,
         satisfaction: data.satisfaction ?? 50,
+        windDirIndex: data.windDirIndex ?? 2,
+        windStrength: data.windStrength ?? 1.0,
       };
     }
   } catch {
@@ -92,9 +110,22 @@ function loadFromLocalStorage(): PersistedState | null {
   return null;
 }
 
-function recalcGrid(grid: GridCell[][], dayTime: number, storedPower: number) {
-  const { poweredCells, totalGeneration, totalConsumption, batteryCapacity } =
-    calculatePowerNetwork(grid, dayTime, storedPower);
+function recalcGrid(
+  grid: GridCell[][],
+  dayTime: number,
+  storedPower: number,
+  globalDirIndex: number,
+  globalStrength: number
+) {
+  const windField = computeWindField(grid, globalDirIndex, globalStrength);
+  const {
+    poweredCells,
+    totalGeneration,
+    totalConsumption,
+    batteryCapacity,
+    windmillModifiers,
+    windmillActualGens,
+  } = calculatePowerNetwork(grid, dayTime, storedPower, windField);
 
   const newGrid = grid.map((row) => row.map((c) => ({ ...c })));
   for (let yy = 0; yy < GRID_SIZE; yy++) {
@@ -103,7 +134,16 @@ function recalcGrid(grid: GridCell[][], dayTime: number, storedPower: number) {
     }
   }
 
-  return { newGrid, poweredCells, totalGeneration, totalConsumption, batteryCapacity };
+  return {
+    newGrid,
+    poweredCells,
+    totalGeneration,
+    totalConsumption,
+    batteryCapacity,
+    windField,
+    windmillModifiers,
+    windmillActualGens,
+  };
 }
 
 function initGame(): Omit<GameState, keyof GameStateActions> {
@@ -112,21 +152,25 @@ function initGame(): Omit<GameState, keyof GameStateActions> {
   const dayTime = saved ? saved.dayTime : 20;
   const storedPower = saved ? saved.storedPower : 10;
   const satisfaction = saved ? saved.satisfaction : 50;
+  const windDirIndex = saved ? saved.windDirIndex : 2;
+  const windStrength = saved ? saved.windStrength : 1.0;
 
-  const { newGrid, poweredCells, totalGeneration, totalConsumption, batteryCapacity } =
-    recalcGrid(grid, dayTime, storedPower);
+  const result = recalcGrid(grid, dayTime, storedPower, windDirIndex, windStrength);
 
   return {
-    grid: newGrid,
+    grid: result.newGrid,
     dayTime,
     storedPower,
-    maxStorage: batteryCapacity,
+    maxStorage: result.batteryCapacity,
     satisfaction,
     selectedTool: 'windmill',
-    poweredCells,
-    totalGeneration,
-    totalConsumption,
+    poweredCells: result.poweredCells,
+    totalGeneration: result.totalGeneration,
+    totalConsumption: result.totalConsumption,
     showSettlement: false,
+    windField: result.windField,
+    windmillModifiers: result.windmillModifiers,
+    windmillActualGens: result.windmillActualGens,
   };
 }
 
@@ -167,13 +211,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       newGrid[y][x] = {
         ...cell,
         type: tool,
-        rotation: tool === 'wire' ? cell.rotation % 6 : 0,
+        rotation: tool === 'wire' ? cell.rotation % 6 : tool === 'sail' ? cell.rotation % 4 : 0,
         powered: false,
         faulty: false,
       };
     }
 
-    const result = recalcGrid(newGrid, state.dayTime, state.storedPower);
+    const result = recalcGrid(
+      newGrid,
+      state.dayTime,
+      state.storedPower,
+      state.windField.globalDirIndex,
+      state.windField.globalStrength
+    );
 
     const nextState = {
       grid: result.newGrid,
@@ -181,6 +231,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       totalGeneration: result.totalGeneration,
       totalConsumption: result.totalConsumption,
       maxStorage: result.batteryCapacity,
+      windField: result.windField,
+      windmillModifiers: result.windmillModifiers,
+      windmillActualGens: result.windmillActualGens,
     };
 
     saveToLocalStorage({
@@ -188,6 +241,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      windDirIndex: state.windField.globalDirIndex,
+      windStrength: state.windField.globalStrength,
     });
 
     set(nextState);
@@ -196,12 +251,22 @@ export const useGameStore = create<GameState>((set, get) => ({
   rotateCell: (x, y) => {
     const state = get();
     const cell = state.grid[y][x];
-    if (cell.type !== 'wire') return;
+    if (cell.type !== 'wire' && cell.type !== 'sail') return;
 
     const newGrid = state.grid.map((row) => row.map((c) => ({ ...c })));
-    newGrid[y][x].rotation = (cell.rotation + 1) % 6;
+    if (cell.type === 'wire') {
+      newGrid[y][x].rotation = (cell.rotation + 1) % 6;
+    } else if (cell.type === 'sail') {
+      newGrid[y][x].rotation = (cell.rotation + 1) % 4;
+    }
 
-    const result = recalcGrid(newGrid, state.dayTime, state.storedPower);
+    const result = recalcGrid(
+      newGrid,
+      state.dayTime,
+      state.storedPower,
+      state.windField.globalDirIndex,
+      state.windField.globalStrength
+    );
 
     const nextState = {
       grid: result.newGrid,
@@ -209,6 +274,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       totalGeneration: result.totalGeneration,
       totalConsumption: result.totalConsumption,
       maxStorage: result.batteryCapacity,
+      windField: result.windField,
+      windmillModifiers: result.windmillModifiers,
+      windmillActualGens: result.windmillActualGens,
     };
 
     saveToLocalStorage({
@@ -216,6 +284,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      windDirIndex: state.windField.globalDirIndex,
+      windStrength: state.windField.globalStrength,
     });
 
     set(nextState);
@@ -229,7 +299,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newGrid = state.grid.map((row) => row.map((c) => ({ ...c })));
     newGrid[y][x].faulty = false;
 
-    const result = recalcGrid(newGrid, state.dayTime, state.storedPower);
+    const result = recalcGrid(
+      newGrid,
+      state.dayTime,
+      state.storedPower,
+      state.windField.globalDirIndex,
+      state.windField.globalStrength
+    );
 
     const nextState = {
       grid: result.newGrid,
@@ -237,6 +313,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       totalGeneration: result.totalGeneration,
       totalConsumption: result.totalConsumption,
       maxStorage: result.batteryCapacity,
+      windField: result.windField,
+      windmillModifiers: result.windmillModifiers,
+      windmillActualGens: result.windmillActualGens,
     };
 
     saveToLocalStorage({
@@ -244,6 +323,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      windDirIndex: state.windField.globalDirIndex,
+      windStrength: state.windField.globalStrength,
     });
 
     set(nextState);
@@ -264,8 +345,32 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const newDayTime = (state.dayTime + 0.5) % DAY_LENGTH;
 
-    const { poweredCells, totalGeneration, totalConsumption, batteryCapacity } =
-      calculatePowerNetwork(newGrid, newDayTime, state.storedPower);
+    let newWindDirIndex = state.windField.globalDirIndex;
+    let newWindStrength = state.windField.globalStrength;
+
+    if (Math.random() < WIND_CHANGE_CHANCE) {
+      newWindDirIndex = randomizeWindDirection(newWindDirIndex);
+    }
+    if (Math.random() < 0.01) {
+      const delta = (Math.random() - 0.5) * 0.1;
+      newWindStrength = Math.max(0.6, Math.min(1.4, newWindStrength + delta));
+    }
+
+    const {
+      poweredCells,
+      totalGeneration,
+      totalConsumption,
+      batteryCapacity,
+      windField,
+      windmillModifiers,
+      windmillActualGens,
+    } = calculatePowerNetworkWithWind(
+      newGrid,
+      newDayTime,
+      state.storedPower,
+      newWindDirIndex,
+      newWindStrength
+    );
 
     for (let yy = 0; yy < GRID_SIZE; yy++) {
       for (let xx = 0; xx < GRID_SIZE; xx++) {
@@ -309,6 +414,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: newDayTime,
       storedPower: newStoredPower,
       satisfaction: newSatisfaction,
+      windDirIndex: newWindDirIndex,
+      windStrength: newWindStrength,
     });
 
     set({
@@ -320,13 +427,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       poweredCells,
       totalGeneration,
       totalConsumption,
+      windField,
+      windmillModifiers,
+      windmillActualGens,
     });
   },
 
   resetGame: () => {
     localStorage.removeItem(STORAGE_KEY);
     const fresh = createEmptyGrid();
-    const result = recalcGrid(fresh, 20, 10);
+    const result = recalcGrid(fresh, 20, 10, 2, 1.0);
     set({
       grid: result.newGrid,
       dayTime: 20,
@@ -338,9 +448,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       totalGeneration: result.totalGeneration,
       totalConsumption: result.totalConsumption,
       showSettlement: false,
+      windField: result.windField,
+      windmillModifiers: result.windmillModifiers,
+      windmillActualGens: result.windmillActualGens,
     });
   },
 
   openSettlement: () => set({ showSettlement: true }),
   closeSettlement: () => set({ showSettlement: false }),
 }));
+
+function calculatePowerNetworkWithWind(
+  grid: GridCell[][],
+  dayTime: number,
+  storedPower: number,
+  globalDirIndex: number,
+  globalStrength: number
+) {
+  const windField = computeWindField(grid, globalDirIndex, globalStrength);
+  const result = calculatePowerNetwork(grid, dayTime, storedPower, windField);
+  return { ...result, windField };
+}

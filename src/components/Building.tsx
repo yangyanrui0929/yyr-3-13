@@ -1,5 +1,7 @@
 import React from 'react';
-import { GridCell, BUILDING_STATS, WIRE_CONNECTIONS } from '../utils/constants';
+import { GridCell, BUILDING_STATS, WIRE_CONNECTIONS, SAIL_ROTATION_NAMES } from '../utils/constants';
+import { useGameStore } from '../store/useGameStore';
+import { WindmillModifierResult } from '../utils/windSystem';
 
 interface BuildingProps {
   cell: GridCell;
@@ -12,8 +14,19 @@ export const Building: React.FC<BuildingProps> = ({ cell }) => {
     return <WireVisual rotation={cell.rotation} powered={cell.powered} faulty={cell.faulty} />;
   }
 
+  if (cell.type === 'sail') {
+    return <SailVisual rotation={cell.rotation} faulty={cell.faulty} />;
+  }
+
   const stats = BUILDING_STATS[cell.type];
   const isRotating = cell.type === 'windmill' && cell.powered && !cell.faulty;
+
+  const windmillModifier = useGameStore((state) =>
+    cell.type === 'windmill' ? state.windmillModifiers.get(`${cell.x},${cell.y}`) : undefined
+  );
+  const windmillActualGen = useGameStore((state) =>
+    cell.type === 'windmill' ? state.windmillActualGens.get(`${cell.x},${cell.y}`) : undefined
+  );
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -31,6 +44,9 @@ export const Building: React.FC<BuildingProps> = ({ cell }) => {
       >
         {stats.emoji}
       </div>
+      {cell.type === 'windmill' && windmillModifier && windmillActualGen !== undefined && (
+        <WindmillBadge modifier={windmillModifier} actualGen={windmillActualGen} faulty={cell.faulty} />
+      )}
       {cell.faulty && (
         <div className="absolute -top-1 -right-1 text-sm animate-pulse">⚠️</div>
       )}
@@ -42,6 +58,82 @@ export const Building: React.FC<BuildingProps> = ({ cell }) => {
           />
         </div>
       )}
+    </div>
+  );
+};
+
+interface WindmillBadgeProps {
+  modifier: WindmillModifierResult;
+  actualGen: number;
+  faulty: boolean;
+}
+
+const WindmillBadge: React.FC<WindmillBadgeProps> = ({ modifier, actualGen, faulty }) => {
+  if (faulty) return null;
+
+  const percent = Math.round((modifier.multiplier - 1) * 100);
+  const sign = percent >= 0 ? '+' : '';
+
+  let bgColor = 'bg-gray-500';
+  let textColor = 'text-white';
+  let label = `${sign}${percent}%`;
+
+  if (modifier.sailBoosted) {
+    bgColor = 'bg-purple-500';
+    label = `⛵${sign}${percent}%`;
+  } else if (modifier.isTailwind && modifier.shadowLevel === 0) {
+    bgColor = 'bg-green-500';
+    label = `顺风${sign}${percent}%`;
+  } else if (modifier.isTailwind && modifier.shadowLevel > 0) {
+    bgColor = 'bg-yellow-500';
+    label = `顺风${sign}${percent}%`;
+  } else if (modifier.isHeadwind) {
+    bgColor = 'bg-red-500';
+    label = `逆风${sign}${percent}%`;
+  } else if (modifier.shadowLevel > 0) {
+    bgColor = 'bg-orange-500';
+    label = `遮挡${sign}${percent}%`;
+  }
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none">
+      <div
+        className={`px-1 py-0.5 rounded-t-md text-[9px] font-bold ${bgColor} ${textColor} shadow-md whitespace-nowrap`}
+      >
+        {label} · {actualGen.toFixed(1)}⚡
+      </div>
+    </div>
+  );
+};
+
+interface SailVisualProps {
+  rotation: number;
+  faulty: boolean;
+}
+
+const SailVisual: React.FC<SailVisualProps> = ({ rotation, faulty }) => {
+  const rotations = ['rotate-0', 'rotate-90', 'rotate-180', '-rotate-90'];
+  const rotationClass = rotations[rotation % 4];
+  const rotationName = SAIL_ROTATION_NAMES[rotation % 4];
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div
+        className={`text-3xl transition-all duration-300 ${rotationClass} ${
+          faulty ? 'opacity-60' : ''
+        }`}
+        style={{
+          filter: faulty ? 'hue-rotate(-50deg) saturate(2)' : 'drop-shadow-lg',
+        }}
+      >
+        ⛵
+      </div>
+      {faulty && <div className="absolute -top-1 -right-1 text-xs animate-pulse">⚠️</div>}
+      <div className="absolute top-0 left-0 right-0 flex justify-center pointer-events-none">
+        <span className="text-[8px] bg-cyan-500/90 text-white px-1 rounded-b-md font-bold shadow">
+          {rotationName}
+        </span>
+      </div>
     </div>
   );
 };

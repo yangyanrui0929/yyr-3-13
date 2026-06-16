@@ -45,13 +45,19 @@ export const Toolbar: React.FC = () => {
             <span className="w-5 h-5 bg-gray-100 rounded flex items-center justify-center text-[10px]">
               <RotateCw size={10} />
             </span>
-            右键/R键旋转电线
+            右键/R键旋转电线/风帆
           </li>
           <li className="flex items-center gap-2">
             <span className="w-5 h-5 bg-orange-100 rounded flex items-center justify-center text-[10px]">
               🔧
             </span>
             点击故障建筑维修
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="w-5 h-5 bg-purple-100 rounded flex items-center justify-center text-[10px]">
+              ⛵
+            </span>
+            导风帆引导风向到风车
           </li>
         </ul>
       </div>
