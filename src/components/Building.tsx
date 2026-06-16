@@ -8,6 +8,13 @@ interface BuildingProps {
 }
 
 export const Building: React.FC<BuildingProps> = ({ cell }) => {
+  const windmillModifier = useGameStore((state) =>
+    state.windmillModifiers.get(`${cell.x},${cell.y}`)
+  );
+  const windmillActualGen = useGameStore((state) =>
+    state.windmillActualGens.get(`${cell.x},${cell.y}`)
+  );
+
   if (cell.type === 'empty') return null;
 
   if (cell.type === 'wire') {
@@ -20,13 +27,6 @@ export const Building: React.FC<BuildingProps> = ({ cell }) => {
 
   const stats = BUILDING_STATS[cell.type];
   const isRotating = cell.type === 'windmill' && cell.powered && !cell.faulty;
-
-  const windmillModifier = useGameStore((state) =>
-    cell.type === 'windmill' ? state.windmillModifiers.get(`${cell.x},${cell.y}`) : undefined
-  );
-  const windmillActualGen = useGameStore((state) =>
-    cell.type === 'windmill' ? state.windmillActualGens.get(`${cell.x},${cell.y}`) : undefined
-  );
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -113,8 +113,9 @@ interface SailVisualProps {
 
 const SailVisual: React.FC<SailVisualProps> = ({ rotation, faulty }) => {
   const rotations = ['rotate-0', 'rotate-90', 'rotate-180', '-rotate-90'];
-  const rotationClass = rotations[rotation % 4];
-  const rotationName = SAIL_ROTATION_NAMES[rotation % 4];
+  const normalizedRot = ((rotation % 4) + 4) % 4;
+  const rotationClass = rotations[normalizedRot];
+  const rotationName = SAIL_ROTATION_NAMES[normalizedRot];
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

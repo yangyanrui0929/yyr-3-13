@@ -137,8 +137,8 @@ function applySailEffect(
 }
 
 function rotationToWindDirIndex(rotation: number): number {
-  const mapping = [2, 6, 4, 0];
-  return mapping[rotation % 4];
+  const mapping = [0, 2, 4, 6];
+  return mapping[((rotation % 4) + 4) % 4];
 }
 
 export interface WindmillModifierResult {
@@ -148,6 +148,8 @@ export interface WindmillModifierResult {
   shadowLevel: number;
   sailBoosted: boolean;
 }
+
+const MILL_DEFAULT_DIR = 0;
 
 export function computeWindmillModifier(
   windField: WindField,
@@ -169,7 +171,7 @@ export function computeWindmillModifier(
   let isTailwind = false;
   let isHeadwind = false;
 
-  const diff = Math.abs(normalizeDirIndex(windCell.dirIndex) - normalizeDirIndex(windField.globalDirIndex));
+  const diff = Math.abs(normalizeDirIndex(windCell.dirIndex) - normalizeDirIndex(MILL_DEFAULT_DIR));
   const half = WIND_DIRECTIONS.length / 2;
   const dirDiff = diff > half ? WIND_DIRECTIONS.length - diff : diff;
 
